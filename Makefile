@@ -24,8 +24,8 @@ app: build
 	@/usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 1.0"             $(APP_BUNDLE)/Contents/Info.plist
 	@/usr/libexec/PlistBuddy -c "Add :NSPrincipalClass          string NSApplication"    $(APP_BUNDLE)/Contents/Info.plist
 	@/usr/libexec/PlistBuddy -c "Add :LSUIElement               bool true"               $(APP_BUNDLE)/Contents/Info.plist
-	@/usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity    dict"                    $(APP_BUNDLE)/Contents/Info.plist
-	@/usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsLocalNetworking bool true" $(APP_BUNDLE)/Contents/Info.plist
+	@/usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" $(APP_BUNDLE)/Contents/Info.plist
+	@/usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" $(APP_BUNDLE)/Contents/Info.plist
 	@echo "Built $(APP_BUNDLE)"
 
 ## Copy SynoWatch.app to ~/Applications (creates it if needed).
