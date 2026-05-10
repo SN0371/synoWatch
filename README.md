@@ -19,22 +19,36 @@ A lightweight macOS menu bar app that monitors a Synology NAS for available DSM 
 
 ## Installation
 
-### Build from source
+### Build and install as a macOS app
 
 ```bash
 git clone <repository-url>
 cd synoWatch
-swift build -c release
-cp .build/release/SynoWatch /usr/local/bin/
+make install
 ```
 
-To launch at login, add the binary to **System Settings → General → Login Items**.
+This compiles the binary in release mode, assembles `SynoWatch.app`, and copies it to `~/Applications/`. Double-clicking the app in Finder starts it directly as a menu bar app — no Terminal window appears.
 
-### Run directly
+**First launch:** macOS may show a Gatekeeper warning because the app is not signed. Choose **Right-click → Open → Open** to proceed. You will only need to do this once.
+
+**To add SynoWatch to Login Items** so it starts automatically:
+> System Settings → General → Login Items → add `SynoWatch.app`
+
+### Available make targets
+
+| Target | Description |
+|---|---|
+| `make` / `make app` | Build `SynoWatch.app` in the project directory |
+| `make install` | Build and copy to `~/Applications/` |
+| `make clean` | Remove the build output and app bundle |
+
+### Run without installing (development)
 
 ```bash
 swift run
 ```
+
+This opens a Terminal window alongside the app and is intended for development only.
 
 ## Configuration
 
@@ -119,19 +133,23 @@ No data is sent to any third party. All communication is directly between SynoWa
 ## Project structure
 
 ```
-Sources/SynoWatch/
-├── main.swift                 Entry point
-├── AppDelegate.swift          Menu bar item, state machine, timer
-├── Config.swift               Configuration model, UserDefaults persistence
-├── KeychainHelper.swift       Keychain read/write wrapper
-├── SynologyClient.swift       DSM 7 API client
-├── InfoView.swift             SwiftUI popover — update status details
-└── SettingsView.swift         SwiftUI popover — settings and 2FA registration
+synoWatch/
+├── Makefile                   Build and install targets
+├── Package.swift              Swift Package Manager manifest
+└── Sources/SynoWatch/
+    ├── main.swift             Entry point
+    ├── AppDelegate.swift      Menu bar item, state machine, timer
+    ├── Config.swift           Configuration model, UserDefaults persistence
+    ├── KeychainHelper.swift   Keychain read/write wrapper
+    ├── SynologyClient.swift   DSM 7 API client
+    ├── IconRenderer.swift     Programmatic NAS icon with status badge
+    ├── InfoView.swift         SwiftUI popover — update status details
+    └── SettingsView.swift     SwiftUI popover — settings and 2FA registration
 ```
 
 ## Known limitations
 
-- **HTTP only on local network**: When using HTTP (no HTTPS), App Transport Security (ATS) permits connections only because the binary is not packaged as a signed app bundle. If you package SynoWatch as a `.app` and sign it, you will need an `Info.plist` with `NSAllowsLocalNetworking = true`.
+- **HTTP on local network**: The app bundle's `Info.plist` includes `NSAllowsLocalNetworking = true`, so plain HTTP connections to a local Synology host work out of the box. Running the raw binary via `swift run` also works because App Transport Security is only enforced for signed app bundles.
 - **Self-signed certificates**: HTTPS connections to a Synology NAS using a self-signed certificate will fail because URLSession validates the certificate chain by default. Use a trusted certificate (e.g. via DSM's built-in Let's Encrypt integration) or connect over HTTP on the local network.
 - **Package update detection**: The package update check reads the `status` field from `SYNO.Core.Package`. DSM sets this to `upgradable` for packages with available updates. The exact field name may vary between DSM minor versions.
 
