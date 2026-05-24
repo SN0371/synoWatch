@@ -27,17 +27,19 @@ struct UpdateInfo {
 /// The entire class is isolated to the main actor. Network calls inside performCheck()
 /// suspend the main actor during URLSession IO, so the UI stays responsive.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private var checkTimer: Timer?
-    private var hideTimer: Timer?
 
     @MainActor private var state: AppState = .unconfigured
 
-    private static let hideDelay: TimeInterval = 30
-
     private lazy var infoPopover = makePopover()
     private lazy var settingsPopover = makePopover()
+
+    private let monitorStore = SystemMonitorStore()
+    private var systemMonitorWindow: NSWindow?
+    private var backgroundMonitorTimer: Timer?
+    private var windowRefreshTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -51,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Config.load() != nil {
             triggerCheck()
             scheduleTimer()
+            startBackgroundMonitorTimer()
         } else {
             // First launch: open settings after the run loop has settled.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
@@ -138,47 +141,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let tooltip: String
         switch state {
         case .unconfigured:
-            cancelHideTimer()
-            statusItem.isVisible = true
             tooltip = "SynoWatch: Not configured — right-click for settings"
         case .checking:
-            cancelHideTimer()
-            statusItem.isVisible = true
             tooltip = "SynoWatch: Checking for updates…"
         case .upToDate(let date):
             let t = DateFormatter.localizedString(from: date, dateStyle: .none, timeStyle: .short)
-            statusItem.isVisible = true
             tooltip = "SynoWatch: Up to date (checked \(t))"
-            scheduleHideTimer()
         case .updatesAvailable:
-            cancelHideTimer()
-            statusItem.isVisible = true
             tooltip = "SynoWatch: Updates available — click for details"
         case .otpRequired:
-            cancelHideTimer()
-            statusItem.isVisible = true
             tooltip = "SynoWatch: 2FA registration required — click for details"
         case .error:
-            cancelHideTimer()
-            statusItem.isVisible = true
             tooltip = "SynoWatch: Check failed — click for details"
         }
 
         button.image = IconRenderer.image(for: state)
         button.contentTintColor = nil
         button.toolTip = tooltip
-    }
-
-    private func scheduleHideTimer() {
-        cancelHideTimer()
-        hideTimer = Timer.scheduledTimer(withTimeInterval: AppDelegate.hideDelay, repeats: false) { [weak self] _ in
-            Task { @MainActor in self?.statusItem.isVisible = false }
-        }
-    }
-
-    private func cancelHideTimer() {
-        hideTimer?.invalidate()
-        hideTimer = nil
     }
 
     // MARK: - Click handling
@@ -233,6 +212,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.infoPopover.performClose(nil)
                 self?.openSettings()
             },
+            onSystemMonitor: { [weak self] in
+                self?.infoPopover.performClose(nil)
+                self?.openSystemMonitor()
+            },
             onCheckNow: { [weak self] in
                 self?.infoPopover.performClose(nil)
                 self?.triggerCheck()
@@ -261,6 +244,77 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func triggerCheckFromMenu() {
         triggerCheck()
+    }
+
+    // MARK: - System monitor window
+
+    /// Opens the system monitor window, or brings it to the front if already open.
+    func openSystemMonitor() {
+        if let win = systemMonitorWindow, win.isVisible {
+            win.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let win = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        win.title = "Synology System Monitor"
+        win.isReleasedWhenClosed = false
+        win.delegate = self
+        win.contentViewController = NSHostingController(rootView: SystemMonitorView(store: monitorStore))
+        win.center()
+        win.makeKeyAndOrderFront(nil)
+        systemMonitorWindow = win
+
+        // While the window is open, refresh every 10 s instead of every 5 min.
+        backgroundMonitorTimer?.invalidate()
+        backgroundMonitorTimer = nil
+        startWindowRefreshTimer()
+        Task { await fetchSystemMonitor() }
+    }
+
+    // MARK: - NSWindowDelegate
+
+    func windowWillClose(_ notification: Notification) {
+        guard (notification.object as? NSWindow) === systemMonitorWindow else { return }
+        windowRefreshTimer?.invalidate()
+        windowRefreshTimer = nil
+        systemMonitorWindow = nil
+        startBackgroundMonitorTimer()
+    }
+
+    // MARK: - Monitor timers
+
+    private func startBackgroundMonitorTimer() {
+        backgroundMonitorTimer?.invalidate()
+        backgroundMonitorTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in await self.fetchSystemMonitor() }
+        }
+    }
+
+    private func startWindowRefreshTimer() {
+        windowRefreshTimer?.invalidate()
+        windowRefreshTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in await self.fetchSystemMonitor() }
+        }
+    }
+
+    private func fetchSystemMonitor() async {
+        guard let config = Config.load(),
+              let password = KeychainHelper.load(service: "SynoWatch", account: config.username) else { return }
+        monitorStore.isLoading = true
+        let deviceId = KeychainHelper.load(service: "SynoWatch-DeviceID", account: config.username)
+        let client = SynologyClient(host: config.host, port: config.port, useHTTPS: config.useHTTPS)
+        let result = await client.fetchSystemInfo(username: config.username, password: password, deviceId: deviceId)
+        if case .success(let snapshot) = result {
+            monitorStore.snapshots = Array((monitorStore.snapshots + [snapshot]).suffix(100))
+        }
+        monitorStore.isLoading = false
     }
 
     // MARK: - Helper

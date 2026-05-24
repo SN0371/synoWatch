@@ -5,6 +5,7 @@ import SwiftUI
 struct InfoView: View {
     let state: AppState
     let onSettings: () -> Void
+    let onSystemMonitor: () -> Void
     let onCheckNow: () -> Void
 
     var body: some View {
@@ -95,9 +96,11 @@ struct InfoView: View {
 
     private var footer: some View {
         HStack {
-            Button("Settings…", action: onSettings)
-                .buttonStyle(.plain)
-                .foregroundColor(.accentColor)
+            Button("Settings", action: onSettings)
+                .buttonStyle(.bordered)
+            Spacer()
+            Button("System Info", action: onSystemMonitor)
+                .buttonStyle(.bordered)
             Spacer()
             Button("Check Now", action: onCheckNow)
                 .buttonStyle(.bordered)
