@@ -62,3 +62,6 @@ fastlane/screenshots/**/*.png
 fastlane/test_output
 
 CLAUDE.md
+.DS_Store
+.claude/
+SynoWatch.app/
