@@ -1,11 +1,13 @@
 # SynoWatch
 
-A lightweight macOS menu bar app that monitors a Synology NAS for available DSM firmware and package updates.
+A lightweight macOS menu bar app that monitors a Synology NAS for available DSM firmware and package updates, and provides a live system health monitor.
 
 ## Features
 
 - Periodically polls the Synology DSM 7 API for firmware and package updates
 - Menu bar icon changes appearance based on the current state
+- Temperature warning badge visible directly in the menu bar
+- Live System Monitor window with CPU, memory, storage, and temperature charts
 - Supports local network access (HTTP or HTTPS)
 - Supports two-factor authentication (2FA/OTP) via trusted device registration
 - Credentials stored securely in the macOS Keychain
@@ -91,28 +93,57 @@ SynoWatch will log in with the OTP code and store the returned device token in t
 
 ## Menu bar icon states
 
-| Icon | Color | Meaning |
+| Badge | Color | Meaning |
 |---|---|---|
-| Gear | Default | Not configured — open Settings |
-| Refresh arrow | Default | Actively checking for updates |
-| Checkmark circle | Default | Up to date |
-| Arrow down circle | Orange | Updates available — click for details |
-| Lock with warning | Yellow | 2FA registration required |
-| Exclamation triangle | Red | Check failed — click for details |
+| Gear | Grey | Not configured — open Settings |
+| *(none)* | — | Actively checking for updates |
+| Checkmark | Green | Up to date |
+| Arrow down | Orange | Updates available — click for details |
+| Thermometer | Orange | Temperature warning — NAS is overheating |
+| Lock | Yellow | 2FA registration required |
+| Exclamation | Red | Check failed — click for details |
+
+The temperature badge takes precedence over the checkmark and update badges, but yields to the lock and error badges.
 
 Left-click opens a popover with details (what is available, when the last check ran).
 Right-click opens a context menu with **Check Now**, **Settings…**, and **Quit SynoWatch**.
 
+## System Monitor
+
+Left-click → **System Monitor** opens a live dashboard window showing:
+
+- **CPU** usage over time (line + area chart)
+- **Memory** used / total in GB
+- **Storage** per volume with fill-level bar
+- **Temperature** system board temperature in °C, highlighted red on warning
+
+The dashboard refreshes every 10 seconds while open, and every 5 minutes in the background so chart history is available immediately when you open the window.
+
+> **Note:** Fan RPM data requires the `SYNO.Core.Hardware.Fan` API, which is not available on all Synology models. On models where it is absent (e.g. DS224+), only temperature is shown.
+
 ## How it works
 
-SynoWatch uses the Synology DSM 7 REST API (`/webapi/`):
+SynoWatch uses the Synology DSM 7 REST API (`/webapi/`).
 
-1. **Login** — `SYNO.API.Auth` version 6, returns a session ID (`sid`)
-2. **Firmware check** — `SYNO.Core.System.Update` version 1, method `check`
-3. **Package check** — `SYNO.Core.Package` version 2, method `list`
+**Update check** (runs on the configured interval):
+
+1. **Login** — `SYNO.API.Auth` v6, returns a session ID (`sid`)
+2. **Firmware check** — `SYNO.Core.System.Update` v1, method `check`
+3. **Package check** — `SYNO.Core.Package` v2, method `list` + `SYNO.Core.Package.Server` v2
 4. **Logout** — session is always terminated after each check
 
 Firmware and package checks run concurrently. The session is short-lived and closed immediately after the check completes.
+
+**System Monitor** (every 10 s when window is open, every 5 min in background):
+
+1. **Login** — same as above
+2. **Utilization** — `SYNO.Core.System.Utilization` v1 for CPU, memory, and volume names
+3. **System info** — `SYNO.Core.System` v3 for board temperature and warning flags
+4. **Fan data** — `SYNO.Core.Hardware.Fan` v1 (silently skipped if not available on this model)
+5. **Volume capacities** — `SYNO.FileStation.List` v2, deduplicated by total size
+6. **Logout**
+
+Steps 2–4 run concurrently; volume capacities are fetched after utilization because they depend on volume names from that response.
 
 ### Trusted device flow (2FA)
 
@@ -138,20 +169,23 @@ synoWatch/
 ├── Package.swift              Swift Package Manager manifest
 └── Sources/SynoWatch/
     ├── main.swift             Entry point
-    ├── AppDelegate.swift      Menu bar item, state machine, timer
+    ├── AppDelegate.swift      Menu bar item, state machine, timers
     ├── Config.swift           Configuration model, UserDefaults persistence
     ├── KeychainHelper.swift   Keychain read/write wrapper
-    ├── SynologyClient.swift   DSM 7 API client
+    ├── SynologyClient.swift   DSM 7 API client (updates + system monitor)
     ├── IconRenderer.swift     Programmatic NAS icon with status badge
     ├── InfoView.swift         SwiftUI popover — update status details
-    └── SettingsView.swift     SwiftUI popover — settings and 2FA registration
+    ├── SettingsView.swift     SwiftUI popover — settings and 2FA registration
+    ├── SystemMonitorStore.swift  ObservableObject holding snapshot history
+    └── SystemMonitorView.swift   SwiftUI window — live system health charts
 ```
 
 ## Known limitations
 
 - **HTTP on local network**: The app bundle's `Info.plist` includes `NSAllowsLocalNetworking = true`, so plain HTTP connections to a local Synology host work out of the box. Running the raw binary via `swift run` also works because App Transport Security is only enforced for signed app bundles.
 - **Self-signed certificates**: HTTPS connections to a Synology NAS using a self-signed certificate will fail because URLSession validates the certificate chain by default. Use a trusted certificate (e.g. via DSM's built-in Let's Encrypt integration) or connect over HTTP on the local network.
-- **Package update detection**: The package update check reads the `status` field from `SYNO.Core.Package`. DSM sets this to `upgradable` for packages with available updates. The exact field name may vary between DSM minor versions.
+- **Package update detection**: The package update check cross-references installed packages (`SYNO.Core.Package`) against the Synology package server (`SYNO.Core.Package.Server`) and compares version strings. The exact field names may vary between DSM minor versions.
+- **Fan RPM**: Fan speed data requires `SYNO.Core.Hardware.Fan`, which is not available on all Synology models. On unsupported models the System Monitor shows only temperature.
 
 ## License
 
