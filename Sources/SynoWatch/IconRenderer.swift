@@ -12,10 +12,10 @@ enum IconRenderer {
     static let imageSize = NSSize(width: 22, height: 16)
 
     /// Returns a fully composited menu bar icon for the given state.
-    static func image(for state: AppState) -> NSImage {
+    static func image(for state: AppState, tempWarning: Bool = false) -> NSImage {
         let image = NSImage(size: imageSize, flipped: false) { _ in
             drawChassis()
-            if let badge = badgeSpec(for: state) {
+            if let badge = badgeSpec(for: state, tempWarning: tempWarning) {
                 drawBadge(badge)
             }
             return true
@@ -62,7 +62,16 @@ enum IconRenderer {
         let color: NSColor
     }
 
-    private static func badgeSpec(for state: AppState) -> BadgeSpec? {
+    private static func badgeSpec(for state: AppState, tempWarning: Bool) -> BadgeSpec? {
+        // Temperature warning takes precedence over normal states, but not hard errors.
+        if tempWarning {
+            switch state {
+            case .error, .otpRequired:
+                break
+            default:
+                return BadgeSpec(symbol: "thermometer.high", color: .systemOrange)
+            }
+        }
         switch state {
         case .upToDate:
             return BadgeSpec(symbol: "checkmark", color: NSColor(red: 0.15, green: 0.75, blue: 0.30, alpha: 1))

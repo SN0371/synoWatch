@@ -32,6 +32,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var checkTimer: Timer?
 
     @MainActor private var state: AppState = .unconfigured
+    @MainActor private var tempWarning: Bool = false
 
     private lazy var infoPopover = makePopover()
     private lazy var settingsPopover = makePopover()
@@ -155,9 +156,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             tooltip = "SynoWatch: Check failed — click for details"
         }
 
-        button.image = IconRenderer.image(for: state)
+        button.image = IconRenderer.image(for: state, tempWarning: tempWarning)
         button.contentTintColor = nil
-        button.toolTip = tooltip
+        button.toolTip = tempWarning ? tooltip + " ⚠ Temperature warning!" : tooltip
     }
 
     // MARK: - Click handling
@@ -313,6 +314,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let result = await client.fetchSystemInfo(username: config.username, password: password, deviceId: deviceId)
         if case .success(let snapshot) = result {
             monitorStore.snapshots = Array((monitorStore.snapshots + [snapshot]).suffix(100))
+            if snapshot.tempWarning != tempWarning {
+                tempWarning = snapshot.tempWarning
+                updateStatusItem()
+            }
         }
         monitorStore.isLoading = false
     }

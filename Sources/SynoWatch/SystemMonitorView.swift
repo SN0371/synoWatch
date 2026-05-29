@@ -50,7 +50,7 @@ struct SystemMonitorView: View {
     }
 
     private var hasRPMData: Bool {
-        store.snapshots.first?.fans.contains(where: { $0.rpm != nil }) == true
+        store.snapshots.contains(where: { $0.fans.contains(where: { $0.rpm != nil }) })
     }
 
     var body: some View {
@@ -95,11 +95,10 @@ struct SystemMonitorView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            if store.isLoading {
-                ProgressView()
-                    .scaleEffect(0.6)
-                    .padding(.leading, 4)
-            }
+            ProgressView()
+                .scaleEffect(0.6)
+                .padding(.leading, 4)
+                .opacity(store.isLoading ? 1 : 0)
         }
     }
 
@@ -175,7 +174,8 @@ struct SystemMonitorView: View {
     @ViewBuilder
     private func fanSection(_ snap: SystemSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("Fans & Temperature", systemImage: "thermometer.medium")
+            Label(snap.fans.isEmpty ? "Temperature" : "Fans & Temperature",
+              systemImage: "thermometer.medium")
                 .font(.subheadline).fontWeight(.semibold)
 
             if let temp = snap.systemTemp {
@@ -203,9 +203,15 @@ struct SystemMonitorView: View {
                             Text(fan.id)
                                 .font(.caption)
                             Spacer()
-                            Text(fan.status)
-                                .font(.caption)
-                                .foregroundColor(fan.status == "normal" ? .green : .red)
+                            if let rpm = fan.rpm {
+                                Text("\(rpm) RPM")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            } else {
+                                Text(fan.status)
+                                    .font(.caption)
+                                    .foregroundColor(fan.status == "normal" ? .green : .red)
+                            }
                         }
                     }
                 }

@@ -352,7 +352,7 @@ struct SynologyClient {
               response.success,
               let d = response.data else { return nil }
 
-        return (temp: d.sys_temp ?? 0, tempWarning: d.sys_tempwarn ?? false)
+        return (temp: d.sys_temp ?? 0, tempWarning: d.anyTempWarning)
     }
 
     /// Fetches fan sensor data.
@@ -504,6 +504,12 @@ private struct SystemInfoResponse: Decodable {
     struct SystemInfoData: Decodable {
         let sys_temp: Int?
         let sys_tempwarn: Bool?
+        let systempwarn: Bool?
+        let temperature_warning: Bool?
+
+        var anyTempWarning: Bool {
+            (sys_tempwarn ?? false) || (systempwarn ?? false) || (temperature_warning ?? false)
+        }
     }
 }
 
@@ -519,6 +525,18 @@ private struct FanListResponse: Decodable {
         let id: String
         let status: String?
         let rpm: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case id, status, rpm, speed
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(String.self, forKey: .id)
+            status = try? c.decode(String.self, forKey: .status)
+            rpm = (try? c.decode(Int.self, forKey: .rpm))
+                ?? (try? c.decode(Int.self, forKey: .speed))
+        }
     }
 }
 
