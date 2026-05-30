@@ -26,6 +26,7 @@ app: build
 	@/usr/libexec/PlistBuddy -c "Add :LSUIElement               bool true"               $(APP_BUNDLE)/Contents/Info.plist
 	@/usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity dict" $(APP_BUNDLE)/Contents/Info.plist
 	@/usr/libexec/PlistBuddy -c "Add :NSAppTransportSecurity:NSAllowsArbitraryLoads bool true" $(APP_BUNDLE)/Contents/Info.plist
+	@codesign -s - --force --deep $(APP_BUNDLE)
 	@echo "Built $(APP_BUNDLE)"
 
 ## Copy SynoWatch.app to ~/Applications (creates it if needed).

@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var password: String = ""
     @State private var intervalIndex: Int = 2
 
+    @State private var notificationStatus: String? = nil
     @State private var otpCode: String = ""
     @State private var isRegistering: Bool = false
     @State private var registrationMessage: RegistrationMessage? = nil
@@ -28,6 +29,7 @@ struct SettingsView: View {
     ]
 
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 16) {
             Text("SynoWatch Settings")
                 .font(.headline)
@@ -103,7 +105,7 @@ struct SettingsView: View {
             }
         }
         .padding(16)
-        .frame(width: 400)
+        }
         .onAppear(perform: loadExisting)
     }
 
@@ -199,19 +201,47 @@ struct SettingsView: View {
                     )
                 }
             }
+            if let status = notificationStatus {
+                Text(status)
+                    .font(.caption)
+                    .foregroundColor(status.hasPrefix("Error") || status.hasPrefix("Permission") ? .red : .green)
+            }
         }
     }
 
     private func sendTestNotification(id: String, title: String, body: String) {
         let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
-            guard granted else { return }
-            let content = UNMutableNotificationContent()
-            content.title = title
-            content.body = body
-            content.sound = .default
-            let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
-            center.add(request)
+        center.getNotificationSettings { settings in
+            DispatchQueue.main.async {
+                switch settings.authorizationStatus {
+                case .authorized, .provisional:
+                    let content = UNMutableNotificationContent()
+                    content.title = title
+                    content.body = body
+                    content.sound = .default
+                    content.interruptionLevel = .active
+                    let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+                    center.add(UNNotificationRequest(identifier: id, content: content, trigger: trigger)) { error in
+                        DispatchQueue.main.async {
+                            if let error {
+                                self.notificationStatus = "Error: \(error.localizedDescription)"
+                            } else {
+                                self.notificationStatus = "Notification sent."
+                            }
+                        }
+                    }
+                case .notDetermined:
+                    center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                        DispatchQueue.main.async {
+                            self.notificationStatus = granted ? "Permission granted — try again." : "Permission denied."
+                        }
+                    }
+                case .denied, .ephemeral:
+                    self.notificationStatus = "Permission denied — enable in System Settings → Notifications."
+                @unknown default:
+                    break
+                }
+            }
         }
     }
 

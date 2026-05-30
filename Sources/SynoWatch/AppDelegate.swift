@@ -2,6 +2,18 @@ import AppKit
 import SwiftUI
 import UserNotifications
 
+// MARK: - Notification delegate
+
+private final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
+    }
+}
+
 // MARK: - State
 
 enum AppState {
@@ -30,6 +42,7 @@ struct UpdateInfo {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
+    private let notificationDelegate = NotificationDelegate()
     private var checkTimer: Timer?
 
     @MainActor private var state: AppState = .unconfigured
@@ -53,7 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
         updateStatusItem()
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        let center = UNUserNotificationCenter.current()
+        center.delegate = notificationDelegate
+        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
         if Config.load() != nil {
             triggerCheck()
@@ -243,7 +258,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             self?.triggerCheck()
             self?.rescheduleTimer()
         })
-        settingsPopover.contentViewController = NSHostingController(rootView: rootView)
+        let hc = NSHostingController(rootView: rootView)
+        hc.preferredContentSize = NSSize(width: 400, height: 480)
+        settingsPopover.contentViewController = hc
         settingsPopover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
     }
 
@@ -351,7 +368,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         content.title = title
         content.body = body
         content.sound = .default
-        let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
+        content.interruptionLevel = .active
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
         UNUserNotificationCenter.current().add(request)
     }
 

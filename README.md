@@ -8,6 +8,8 @@ A lightweight macOS menu bar app that monitors a Synology NAS for available DSM 
 - Menu bar icon changes appearance based on the current state
 - Temperature warning badge visible directly in the menu bar
 - Live System Monitor window with CPU, memory, storage, and temperature charts
+- macOS notifications for critical hardware events (temperature warning, disk health)
+- Monitors physical disk health via DSM storage API
 - Supports local network access (HTTP or HTTPS)
 - Supports two-factor authentication (2FA/OTP) via trusted device registration
 - Credentials stored securely in the macOS Keychain
@@ -121,6 +123,21 @@ The dashboard refreshes every 10 seconds while open, and every 5 minutes in the 
 
 > **Note:** Fan RPM data requires the `SYNO.Core.Hardware.Fan` API, which is not available on all Synology models. On models where it is absent (e.g. DS224+), only temperature is shown.
 
+## Notifications
+
+SynoWatch sends macOS notifications for critical hardware events that may require immediate action:
+
+| Event | Trigger |
+|---|---|
+| Temperature warning | DSM raises a temperature alert for the system board |
+| Disk health warning | Any physical disk reports a non-normal status |
+
+Notifications fire at most once per event per session to avoid repeated alerts. On first launch, macOS will ask for notification permission.
+
+**To test notifications:** open Settings → **Notifications** section → click the test buttons.
+
+> **Note:** macOS Focus modes (Do Not Disturb etc.) suppress notification banners. If a banner does not appear, check whether a Focus mode is active.
+
 ## How it works
 
 SynoWatch uses the Synology DSM 7 REST API (`/webapi/`).
@@ -140,10 +157,11 @@ Firmware and package checks run concurrently. The session is short-lived and clo
 2. **Utilization** — `SYNO.Core.System.Utilization` v1 for CPU, memory, and volume names
 3. **System info** — `SYNO.Core.System` v3 for board temperature and warning flags
 4. **Fan data** — `SYNO.Core.Hardware.Fan` v1 (silently skipped if not available on this model)
-5. **Volume capacities** — `SYNO.FileStation.List` v2, deduplicated by total size
+5. **Disk health** — `SYNO.Core.Storage.Disk` v1 for physical disk status
+6. **Volume capacities** — `SYNO.FileStation.List` v2, deduplicated by total size
 6. **Logout**
 
-Steps 2–4 run concurrently; volume capacities are fetched after utilization because they depend on volume names from that response.
+Steps 2–5 run concurrently; volume capacities are fetched after utilization because they depend on volume names from that response.
 
 ### Trusted device flow (2FA)
 
