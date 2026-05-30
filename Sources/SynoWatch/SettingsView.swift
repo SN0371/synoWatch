@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 /// Popover content for configuring the Synology host, credentials, and check interval.
 struct SettingsView: View {
@@ -90,6 +91,10 @@ struct SettingsView: View {
 
             Divider()
 
+            notificationTestSection
+
+            Divider()
+
             HStack {
                 Spacer()
                 Button("Save", action: save)
@@ -165,6 +170,48 @@ struct SettingsView: View {
             Text(isDeviceRegistered ? "Registered" : "Not registered")
                 .font(.caption)
                 .foregroundColor(isDeviceRegistered ? .green : .secondary)
+        }
+    }
+
+    // MARK: - Notification test section
+
+    private var notificationTestSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Notifications")
+                .font(.subheadline)
+                .fontWeight(.medium)
+            Text("Send a test notification to verify that macOS has granted permission.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            HStack(spacing: 8) {
+                Button("Test Temperature Warning") {
+                    sendTestNotification(
+                        id: "synowatch-test-temp",
+                        title: "Temperature Warning",
+                        body: "Your Synology NAS is overheating (75 °C). [Test]"
+                    )
+                }
+                Button("Test Disk Warning") {
+                    sendTestNotification(
+                        id: "synowatch-test-disk",
+                        title: "Disk Health Warning",
+                        body: "Disk 1 reports status \"warning\". Check Storage Manager immediately. [Test]"
+                    )
+                }
+            }
+        }
+    }
+
+    private func sendTestNotification(id: String, title: String, body: String) {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.sound = .default
+            let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
+            center.add(request)
         }
     }
 
