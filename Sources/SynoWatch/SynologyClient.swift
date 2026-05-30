@@ -252,7 +252,8 @@ struct SynologyClient {
             async let utilization = fetchUtilization(sid: sid)
             async let fans = fetchFans(sid: sid)
             async let sysInfo = fetchSystemInfo(sid: sid)
-            let (util, fanList, hwInfo) = await (utilization, fans, sysInfo)
+            async let disks = fetchDiskHealth(sid: sid)
+            let (util, fanList, hwInfo, diskList) = await (utilization, fans, sysInfo, disks)
 
             guard let util else {
                 await logout(sid: sid)
@@ -269,6 +270,7 @@ struct SynologyClient {
                 memoryTotal: util.memTotal,
                 volumes: volumes,
                 fans: fanList,
+                disks: diskList,
                 systemTemp: hwInfo?.temp,
                 tempWarning: hwInfo?.tempWarning ?? false
             )
@@ -372,6 +374,28 @@ struct SynologyClient {
               let fans = response.data?.fans else { return [] }
 
         return fans.map { FanInfo(id: $0.id, status: $0.status ?? "unknown", rpm: $0.rpm) }
+    }
+
+    /// Fetches physical disk health status.
+    ///
+    /// Returns an empty array if the API is unavailable or no disks are reported.
+    private func fetchDiskHealth(sid: String) async -> [DiskInfo] {
+        guard let url = makeURL(path: "webapi/entry.cgi", params: [
+            "api": "SYNO.Core.Storage.Disk",
+            "version": "1",
+            "method": "list",
+            "_sid": sid,
+        ]) else { return [] }
+
+        guard let data = await fetch(url),
+              let response = try? JSONDecoder().decode(DiskListResponse.self, from: data),
+              response.success,
+              let disks = response.data?.disks else { return [] }
+
+        return disks.compactMap { d in
+            guard let id = d.id, let status = d.status, status != "not_installed" else { return nil }
+            return DiskInfo(id: id, name: d.name ?? id, status: status)
+        }
     }
 }
 
@@ -540,3 +564,17 @@ private struct FanListResponse: Decodable {
     }
 }
 
+private struct DiskListResponse: Decodable {
+    let success: Bool
+    let data: DiskData?
+
+    struct DiskData: Decodable {
+        let disks: [DiskEntry]?
+    }
+
+    struct DiskEntry: Decodable {
+        let id: String?
+        let name: String?
+        let status: String?
+    }
+}

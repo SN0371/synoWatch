@@ -11,6 +11,7 @@ struct SystemSnapshot {
     let memoryTotal: Int
     let volumes: [VolumeInfo]
     let fans: [FanInfo]
+    let disks: [DiskInfo]
     /// System board temperature in degrees Celsius, if reported by DSM.
     let systemTemp: Int?
     /// True if DSM has raised a temperature warning.
@@ -33,6 +34,19 @@ struct FanInfo {
     let status: String
     /// Rotational speed in RPM, if reported by DSM.
     let rpm: Int?
+}
+
+/// Physical disk health status.
+struct DiskInfo {
+    let id: String
+    let name: String
+    let status: String
+
+    /// True only when DSM reports the disk as fully healthy.
+    var isHealthy: Bool {
+        let s = status.lowercased()
+        return s == "normal" || s == "" || s == "not_installed"
+    }
 }
 
 /// Observable store that AppDelegate populates and SystemMonitorView reads.

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UserNotifications
 
 // MARK: - State
 
@@ -33,6 +34,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @MainActor private var state: AppState = .unconfigured
     @MainActor private var tempWarning: Bool = false
+    /// Disk IDs for which a health warning has already been sent this session.
+    @MainActor private var warnedDiskIds: Set<String> = []
 
     private lazy var infoPopover = makePopover()
     private lazy var settingsPopover = makePopover()
@@ -50,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
 
         updateStatusItem()
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
         if Config.load() != nil {
             triggerCheck()
@@ -314,15 +318,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let result = await client.fetchSystemInfo(username: config.username, password: password, deviceId: deviceId)
         if case .success(let snapshot) = result {
             monitorStore.snapshots = Array((monitorStore.snapshots + [snapshot]).suffix(100))
+
+            if snapshot.tempWarning && !tempWarning {
+                sendNotification(
+                    id: "synowatch-temp",
+                    title: "Temperature Warning",
+                    body: "Your Synology NAS is overheating (\(snapshot.systemTemp.map { "\($0) °C" } ?? "unknown"))."
+                )
+            }
             if snapshot.tempWarning != tempWarning {
                 tempWarning = snapshot.tempWarning
                 updateStatusItem()
+            }
+
+            for disk in snapshot.disks where !disk.isHealthy {
+                if warnedDiskIds.insert(disk.id).inserted {
+                    sendNotification(
+                        id: "synowatch-disk-\(disk.id)",
+                        title: "Disk Health Warning",
+                        body: "\(disk.name) reports status \"\(disk.status)\". Check Storage Manager immediately."
+                    )
+                }
             }
         }
         monitorStore.isLoading = false
     }
 
     // MARK: - Helper
+
+    private func sendNotification(id: String, title: String, body: String) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
 
     private func makePopover() -> NSPopover {
         let p = NSPopover()
