@@ -35,6 +35,8 @@ This compiles the binary in release mode, assembles `SynoWatch.app`, and copies 
 
 **First launch:** macOS may show a Gatekeeper warning because the app is not signed. Choose **Right-click → Open → Open** to proceed. You will only need to do this once.
 
+**Keychain access:** Because the app is not signed with an official Apple Developer certificate, macOS will prompt twice with "Always Allow" when SynoWatch first reads and writes its credentials in the Keychain. Click **Always Allow** both times — otherwise the app cannot save or retrieve the NAS password.
+
 **To add SynoWatch to Login Items** so it starts automatically:
 > System Settings → General → Login Items → add `SynoWatch.app`
 
